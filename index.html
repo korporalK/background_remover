@@ -58,15 +58,6 @@
             <!-- Left Side: Original Image & Controls -->
             <div>
                  <h2 class="text-xl font-semibold mb-3 text-center">Original Image</h2>
-                <div class="flex items-center justify-center gap-4 mb-3">
-                    <span class="text-sm font-medium text-gray-700">Mode:</span>
-                    <div class="relative inline-block w-32">
-                        <div class="bg-gray-200 rounded-full p-1 flex items-center">
-                            <button id="mode-pan" class="w-1/2 rounded-full py-1 text-xs font-semibold text-white bg-blue-600">Pan/Zoom</button>
-                            <button id="mode-pick" class="w-1/2 rounded-full py-1 text-xs font-semibold text-gray-500">Color Pick</button>
-                        </div>
-                    </div>
-                </div>
                  <div id="original-preview-container" class="preview-container preview-container-bg rounded-lg border border-gray-300 p-2 relative h-[350px] sm:h-[500px]">
                     <img id="original-preview" src="#" alt="Original Image Preview" class="preview-image rounded-md">
                  </div>
@@ -87,7 +78,7 @@
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-2">2. Pick Colors to Remove</label>
                         <div class="flex items-center gap-3 bg-gray-50 p-3 rounded-lg border">
-                           <p id="instruction-text" class="text-xs text-gray-500">Click on the original image to add a color.</p>
+                           <p class="text-xs text-gray-500">Click on the original image to add a color.</p>
                         </div>
                     </div>
                     <!-- Container for multiple color selections -->
@@ -153,13 +144,13 @@
         const ctx = canvas.getContext('2d', { willReadFrequently: true });
         const downloadBtn = document.getElementById('download-btn');
         const colorSelectionsContainer = document.getElementById('color-selections-container');
-
+        
         // Original Image Zoom Elements
         const origZoomInBtn = document.getElementById('orig-zoom-in-btn');
         const origZoomOutBtn = document.getElementById('orig-zoom-out-btn');
         const origZoomResetBtn = document.getElementById('orig-zoom-reset-btn');
         const origZoomLevelDisplay = document.getElementById('orig-zoom-level');
-
+        
         // Result Image Zoom Elements
         const resZoomInBtn = document.getElementById('res-zoom-in-btn');
         const resZoomOutBtn = document.getElementById('res-zoom-out-btn');
@@ -171,13 +162,7 @@
         const qualityContainer = document.getElementById('quality-container');
         const qualitySlider = document.getElementById('quality-slider');
         const qualityValue = document.getElementById('quality-value');
-.
         const jpegWarning = document.getElementById('jpeg-warning');
-
-        // Mode Elements
-        const modePanBtn = document.getElementById('mode-pan');
-        const modePickBtn = document.getElementById('mode-pick');
-        const instructionText = document.getElementById('instruction-text');
 
         // --- State Variables ---
         let currentImage = null;
@@ -186,7 +171,6 @@
         let colorSelections = [];
         let outputFormat = 'png';
         let outputQuality = 92;
-        let interactionMode = 'pan'; // 'pan' or 'pick'
 
         // --- Pan/Zoom State Factory ---
         const createPanZoomState = () => ({
@@ -213,7 +197,7 @@
                         workspace.classList.remove('hidden');
                         originalPreview.src = event.target.result;
                         resultPreview.src = "https://placehold.co/600x400/f1f5f9/cbd5e1?text=Preview";
-
+                        
                         canvas.width = currentImage.naturalWidth;
                         canvas.height = currentImage.naturalHeight;
                         ctx.drawImage(currentImage, 0, 0);
@@ -226,7 +210,6 @@
                         updateTransform(resultPreview, resState, resZoomLevelDisplay);
                         renderColorSelections();
                         updateResult();
-                        setInteractionMode('pan');
                     };
                     currentImage.src = event.target.result;
                 };
@@ -235,7 +218,7 @@
         });
 
         originalPreviewContainer.addEventListener('click', (e) => {
-            if (interactionMode !== 'pick' || origState.panOccurred) return;
+            if (origState.panOccurred) return;
             if (!currentImage) return;
 
             const rect = originalPreview.getBoundingClientRect();
@@ -247,36 +230,32 @@
 
             const pixelIndex = (Math.floor(clickY) * currentImage.naturalWidth + Math.floor(clickX)) * 4;
             const pixel = originalImageData.data.slice(pixelIndex, pixelIndex + 4);
-
+            
             colorSelections.push({
                 id: Date.now(),
                 color: { r: pixel[0], g: pixel[1], b: pixel[2] },
                 tolerance: 20,
                 blur: 0
             });
-
+            
             renderColorSelections();
             updateResult();
         });
-
+        
         // --- Pan/Zoom Setup ---
         function setupPanZoom(container, element, state, zoomLevelDisplay) {
-            let initialPinchDistance = 0;
-            let lastZoom = state.zoomLevel;
-
-            // Mouse Events
             container.addEventListener('mousedown', (e) => {
-                if (e.button !== 0 || (container.id === 'original-preview-container' && interactionMode !== 'pan')) return;
+                if (e.button !== 0) return;
                 state.isPanning = true;
                 state.panOccurred = false;
                 state.startPan.x = e.clientX - state.imageOffset.x;
                 state.startPan.y = e.clientY - state.imageOffset.y;
                 container.style.cursor = 'grabbing';
             });
-
+            
             document.addEventListener('mousemove', (e) => {
                 if (state.isPanning) {
-                    if (Math.abs(e.clientX - state.startPan.x - state.imageOffset.x) > 5 || Math.abs(e.clientY - state.startPan.y - state.imageOffset.y) > 5) {
+                    if (Math.abs(e.clientX - state.startPan.x - state.imageOffset.x) > 3 || Math.abs(e.clientY - state.startPan.y - state.imageOffset.y) > 3) {
                         state.panOccurred = true;
                     }
                     state.imageOffset.x = e.clientX - state.startPan.x;
@@ -286,67 +265,20 @@
             });
 
             document.addEventListener('mouseup', () => {
-                if (state.isPanning) {
+                if(state.isPanning) {
                     state.isPanning = false;
-                    if (container.id === 'original-preview-container') {
-                        container.style.cursor = interactionMode === 'pan' ? 'grab' : 'crosshair';
-                    } else {
-                        container.style.cursor = 'grab';
-                    }
-                }
-            });
-
-            // Touch Events
-            container.addEventListener('touchstart', (e) => {
-                if (container.id === 'original-preview-container' && interactionMode !== 'pan') return;
-                const touches = e.touches;
-                if (touches.length === 1) {
-                    state.isPanning = true;
-                    state.panOccurred = false;
-                    state.startPan.x = touches[0].clientX - state.imageOffset.x;
-                    state.startPan.y = touches[0].clientY - state.imageOffset.y;
-                } else if (touches.length === 2) {
-                    initialPinchDistance = Math.hypot(touches[0].clientX - touches[1].clientX, touches[0].clientY - touches[1].clientY);
-                    lastZoom = state.zoomLevel;
-                }
-            }, { passive: true });
-
-            container.addEventListener('touchmove', (e) => {
-                 if (container.id === 'original-preview-container' && interactionMode !== 'pan') return;
-                const touches = e.touches;
-                if (touches.length === 1 && state.isPanning) {
-                    if (Math.abs(touches[0].clientX - state.startPan.x - state.imageOffset.x) > 5 || Math.abs(touches[0].clientY - state.startPan.y - state.imageOffset.y) > 5) {
-                        state.panOccurred = true;
-                    }
-                    state.imageOffset.x = touches[0].clientX - state.startPan.x;
-                    state.imageOffset.y = touches[0].clientY - state.startPan.y;
-                    updateTransform(element, state, zoomLevelDisplay);
-                } else if (touches.length === 2) {
-                    const currentPinchDistance = Math.hypot(touches[0].clientX - touches[1].clientX, touches[0].clientY - touches[1].clientY);
-                    if (initialPinchDistance > 0) {
-                        const zoomRatio = currentPinchDistance / initialPinchDistance;
-                        setZoom(element, state, zoomLevelDisplay, lastZoom * zoomRatio);
-                    }
-                }
-            }, { passive: true });
-
-            container.addEventListener('touchend', (e) => {
-                if (state.isPanning) {
-                    state.isPanning = false;
-                }
-                if (e.touches.length < 2) {
-                    initialPinchDistance = 0;
+                    container.style.cursor = container.id === 'original-preview-container' ? 'crosshair' : 'grab';
                 }
             });
         }
-
+        
         setupPanZoom(originalPreviewContainer, originalPreview, origState, origZoomLevelDisplay);
         setupPanZoom(resultPreviewContainer, resultPreview, resState, resZoomLevelDisplay);
-
+        
         origZoomInBtn.addEventListener('click', () => setZoom(originalPreview, origState, origZoomLevelDisplay, origState.zoomLevel + 0.2));
         origZoomOutBtn.addEventListener('click', () => setZoom(originalPreview, origState, origZoomLevelDisplay, origState.zoomLevel - 0.2));
         origZoomResetBtn.addEventListener('click', () => resetZoom(originalPreview, origState, origZoomLevelDisplay));
-
+        
         resZoomInBtn.addEventListener('click', () => setZoom(resultPreview, resState, resZoomLevelDisplay, resState.zoomLevel + 0.2));
         resZoomOutBtn.addEventListener('click', () => setZoom(resultPreview, resState, resZoomLevelDisplay, resState.zoomLevel - 0.2));
         resZoomResetBtn.addEventListener('click', () => resetZoom(resultPreview, resState, resZoomLevelDisplay));
@@ -366,35 +298,12 @@
             element.style.transform = `translate(${state.imageOffset.x}px, ${state.imageOffset.y}px) scale(${state.zoomLevel})`;
             display.textContent = `${Math.round(state.zoomLevel * 100)}%`;
         }
-
-        // --- Mode Switching ---
-        function setInteractionMode(mode) {
-            interactionMode = mode;
-            if (mode === 'pan') {
-                modePanBtn.classList.add('bg-blue-600', 'text-white');
-                modePanBtn.classList.remove('text-gray-500');
-                modePickBtn.classList.remove('bg-blue-600', 'text-white');
-                modePickBtn.classList.add('text-gray-500');
-                originalPreviewContainer.style.cursor = 'grab';
-                instructionText.textContent = 'Use mouse to pan, scroll to zoom. On mobile, use one finger to pan and two to zoom.';
-            } else {
-                modePickBtn.classList.add('bg-blue-600', 'text-white');
-                modePickBtn.classList.remove('text-gray-500');
-                modePanBtn.classList.remove('bg-blue-600', 'text-white');
-                modePanBtn.classList.add('text-gray-500');
-                originalPreviewContainer.style.cursor = 'crosshair';
-                instructionText.textContent = 'Click or tap on the original image to select a color to remove.';
-            }
-        }
-
-        modePanBtn.addEventListener('click', () => setInteractionMode('pan'));
-        modePickBtn.addEventListener('click', () => setInteractionMode('pick'));
-
+        
         // --- Download Options Listeners ---
         formatSelector.addEventListener('click', (e) => {
             if (e.target.classList.contains('format-btn')) {
                 outputFormat = e.target.dataset.format;
-
+                
                 document.querySelectorAll('.format-btn').forEach(btn => {
                     btn.classList.remove('bg-blue-600', 'text-white');
                     btn.classList.add('bg-gray-200', 'text-gray-700');
@@ -424,23 +333,23 @@
 
             colorSelections.forEach(selection => {
                 const hexColor = `#${selection.color.r.toString(16).padStart(2, '0')}${selection.color.g.toString(16).padStart(2, '0')}${selection.color.b.toString(16).padStart(2, '0')}`;
-
+                
                 const element = document.createElement('div');
                 element.className = 'bg-gray-50 p-3 rounded-lg border space-y-2';
                 element.innerHTML = `
                     <div class="flex items-center gap-3">
-                        <div class="w-6 h-6 rounded-md border border-gray-300" style="background-color: ${hexColor};"></div>
+                        <div class="color-box rounded-md" style="background-color: ${hexColor};"></div>
                         <span class="font-mono text-sm">${hexColor}</span>
                         <button data-id="${selection.id}" class="delete-btn ml-auto text-gray-400 hover:text-red-500 font-bold text-xl">&times;</button>
                     </div>
                     <div class="grid grid-cols-2 gap-4">
                         <div>
-                            <label class="text-xs font-medium text-gray-600">Color Range: <span class="font-bold tolerance-value">${selection.tolerance}</span></label>
-                            <input type="range" min="0" max="255" value="${selection.tolerance}" data-id="${selection.id}" class="slider tolerance-slider w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer" title="How similar colors should be to be removed">
+                            <label class="text-xs font-medium text-gray-600">Tolerance: <span class="font-bold tolerance-value">${selection.tolerance}</span></label>
+                            <input type="range" min="0" max="255" value="${selection.tolerance}" data-id="${selection.id}" class="slider tolerance-slider w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
                         </div>
                         <div>
-                            <label class="text-xs font-medium text-gray-600">Edge Blur: <span class="font-bold blur-value">${selection.blur}</span>px</label>
-                            <input type="range" min="0" max="50" value="${selection.blur}" data-id="${selection.id}" class="slider blur-slider w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer" title="Makes the edge of the removed area softer">
+                            <label class="text-xs font-medium text-gray-600">Blur Edge: <span class="font-bold blur-value">${selection.blur}</span>px</label>
+                            <input type="range" min="0" max="50" value="${selection.blur}" data-id="${selection.id}" class="slider blur-slider w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
                         </div>
                     </div>
                 `;
@@ -503,7 +412,7 @@
 
             const alphaMask = generateAlphaMask();
             const maxBlur = colorSelections.reduce((max, s) => Math.max(max, s.blur), 0);
-
+            
             const finalCanvas = document.createElement('canvas');
             finalCanvas.width = canvas.width;
             finalCanvas.height = canvas.height;
@@ -514,7 +423,7 @@
             maskCanvas.height = canvas.height;
             const maskCtx = maskCanvas.getContext('2d');
             maskCtx.putImageData(alphaMask, 0, 0);
-
+            
             if (maxBlur > 0) {
                 finalCtx.filter = `blur(${maxBlur}px)`;
             }
@@ -523,7 +432,7 @@
 
             finalCtx.globalCompositeOperation = 'source-in';
             finalCtx.drawImage(currentImage, 0, 0);
-
+            
             if (outputFormat === 'jpeg') {
                 finalCtx.globalCompositeOperation = 'destination-over';
                 finalCtx.fillStyle = '#FFFFFF';
@@ -533,7 +442,7 @@
             const mimeType = `image/${outputFormat}`;
             const quality = outputQuality / 100;
             const resultDataUrl = finalCanvas.toDataURL(mimeType, quality);
-
+            
             resultPreview.src = resultDataUrl;
             downloadBtn.href = resultDataUrl;
 
