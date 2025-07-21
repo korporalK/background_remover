@@ -58,6 +58,14 @@
             <!-- Left Side: Original Image & Controls -->
             <div>
                  <h2 class="text-xl font-semibold mb-3 text-center">Original Image</h2>
+                <div class="flex items-center justify-center gap-4 my-3">
+                    <span class="text-sm font-medium">Color Picker</span>
+                    <label for="mode-toggle" class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="mode-toggle" class="sr-only peer">
+                        <div class="w-11 h-6 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                    </label>
+                    <span class="text-sm font-medium">Pan/Zoom</span>
+                </div>
                  <div id="original-preview-container" class="preview-container preview-container-bg rounded-lg border border-gray-300 p-2 relative h-[350px] sm:h-[500px]">
                     <img id="original-preview" src="#" alt="Original Image Preview" class="preview-image rounded-md">
                  </div>
@@ -78,11 +86,11 @@
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-2">2. Pick Colors to Remove</label>
                         <div class="flex items-center gap-3 bg-gray-50 p-3 rounded-lg border">
-                           <p class="text-xs text-gray-500">Click on the original image to add a color.</p>
+                           <p class="text-sm text-gray-600">Click on the original image to add a color.</p>
                         </div>
                     </div>
                     <!-- Container for multiple color selections -->
-                    <div id="color-selections-container" class="space-y-3 max-h-48 overflow-y-auto pr-2">
+                    <div id="color-selections-container" class="space-y-4 max-h-48 overflow-y-auto pr-2">
                         <!-- Color selection items will be dynamically inserted here -->
                     </div>
                 </div>
@@ -244,13 +252,34 @@
         
         // --- Pan/Zoom Setup ---
         function setupPanZoom(container, element, state, zoomLevelDisplay) {
+            let initialPinchDistance = null;
+            let initialZoomLevel = 1;
+
+            const getDistance = (touches) => {
+                return Math.sqrt(Math.pow(touches[0].clientX - touches[1].clientX, 2) + Math.pow(touches[0].clientY - touches[1].clientY, 2));
+            };
+
             container.addEventListener('mousedown', (e) => {
                 if (e.button !== 0) return;
+                if (container.id === 'original-preview-container' && !isPanMode) return;
                 state.isPanning = true;
                 state.panOccurred = false;
                 state.startPan.x = e.clientX - state.imageOffset.x;
                 state.startPan.y = e.clientY - state.imageOffset.y;
                 container.style.cursor = 'grabbing';
+            });
+
+            container.addEventListener('touchstart', (e) => {
+                if (container.id === 'original-preview-container' && !isPanMode) return;
+                if (e.touches.length === 1) {
+                    state.isPanning = true;
+                    state.panOccurred = false;
+                    state.startPan.x = e.touches[0].clientX - state.imageOffset.x;
+                    state.startPan.y = e.touches[0].clientY - state.imageOffset.y;
+                } else if (e.touches.length === 2) {
+                    initialPinchDistance = getDistance(e.touches);
+                    initialZoomLevel = state.zoomLevel;
+                }
             });
             
             document.addEventListener('mousemove', (e) => {
@@ -269,6 +298,24 @@
                     state.isPanning = false;
                     container.style.cursor = container.id === 'original-preview-container' ? 'crosshair' : 'grab';
                 }
+            });
+
+            container.addEventListener('touchmove', (e) => {
+                e.preventDefault();
+                if (e.touches.length === 1 && state.isPanning) {
+                    state.imageOffset.x = e.touches[0].clientX - state.startPan.x;
+                    state.imageOffset.y = e.touches[0].clientY - state.startPan.y;
+                    updateTransform(element, state, zoomLevelDisplay);
+                } else if (e.touches.length === 2 && initialPinchDistance) {
+                    const newDistance = getDistance(e.touches);
+                    const zoomFactor = newDistance / initialPinchDistance;
+                    setZoom(element, state, zoomLevelDisplay, initialZoomLevel * zoomFactor);
+                }
+            });
+
+            container.addEventListener('touchend', (e) => {
+                state.isPanning = false;
+                initialPinchDistance = null;
             });
         }
         
@@ -344,12 +391,12 @@
                     </div>
                     <div class="grid grid-cols-2 gap-4">
                         <div>
-                            <label class="text-xs font-medium text-gray-600">Tolerance: <span class="font-bold tolerance-value">${selection.tolerance}</span></label>
-                            <input type="range" min="0" max="255" value="${selection.tolerance}" data-id="${selection.id}" class="slider tolerance-slider w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                            <label class="text-sm font-medium text-gray-600">Tolerance: <span class="font-bold tolerance-value">${selection.tolerance}</span></label>
+                            <input type="range" min="0" max="255" value="${selection.tolerance}" data-id="${selection.id}" class="slider tolerance-slider w-full h-3 bg-gray-200 rounded-lg appearance-none cursor-pointer">
                         </div>
                         <div>
-                            <label class="text-xs font-medium text-gray-600">Blur Edge: <span class="font-bold blur-value">${selection.blur}</span>px</label>
-                            <input type="range" min="0" max="50" value="${selection.blur}" data-id="${selection.id}" class="slider blur-slider w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                            <label class="text-sm font-medium text-gray-600">Blur Edge: <span class="font-bold blur-value">${selection.blur}</span>px</label>
+                            <input type="range" min="0" max="50" value="${selection.blur}" data-id="${selection.id}" class="slider blur-slider w-full h-3 bg-gray-200 rounded-lg appearance-none cursor-pointer">
                         </div>
                     </div>
                 `;
@@ -449,6 +496,48 @@
             const nameWithoutExtension = originalFilename.split('.').slice(0, -1).join('.') || 'image';
             downloadBtn.download = `${nameWithoutExtension}-transparent.${outputFormat}`;
         }
+
+
+        const modeToggle = document.getElementById('mode-toggle');
+        let isPanMode = false;
+        modeToggle.checked = isPanMode;
+
+        function setPanMode(enabled) {
+            isPanMode = enabled;
+            originalPreviewContainer.style.cursor = enabled ? 'grab' : 'crosshair';
+        }
+
+        modeToggle.addEventListener('change', (e) => {
+            setPanMode(e.target.checked);
+        });
+
+        originalPreviewContainer.addEventListener('click', (e) => {
+            e.stopImmediatePropagation();
+            if (isPanMode) return;
+            if (origState.panOccurred) return;
+            if (!currentImage) return;
+
+            const rect = originalPreview.getBoundingClientRect();
+            const ratio = currentImage.naturalWidth / rect.width;
+            const clickX = (e.clientX - rect.left) * ratio;
+            const clickY = (e.clientY - rect.top) * ratio;
+
+            if (clickX < 0 || clickY < 0 || clickX >= currentImage.naturalWidth || clickY >= currentImage.naturalHeight) return;
+
+            const pixelIndex = (Math.floor(clickY) * currentImage.naturalWidth + Math.floor(clickX)) * 4;
+            const pixel = originalImageData.data.slice(pixelIndex, pixelIndex + 4);
+
+            colorSelections.push({
+                id: Date.now(),
+                color: { r: pixel[0], g: pixel[1], b: pixel[2] },
+                tolerance: 20,
+                blur: 0
+            });
+
+            renderColorSelections();
+            updateResult();
+        }, true); // Use capture to override the other click listener
+
     </script>
 </body>
 </html>
