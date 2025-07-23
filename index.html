@@ -25,7 +25,7 @@
         }
         .preview-image {
             transition: transform 0.1s linear;
-            transform-origin: top left;
+            transform-origin: center center;
             max-width: 100%;
             width: auto;
             height: auto;
@@ -71,10 +71,10 @@
                  </div>
                  <!-- Zoom Controls -->
                  <div class="flex items-center justify-center gap-2 mt-3">
-                     <button id="orig-zoom-out-btn" class="px-3 py-1 bg-gray-200 rounded-md hover:bg-gray-300">-</button>
-                     <span id="orig-zoom-level" class="text-sm font-medium w-16 text-center">100%</span>
-                     <button id="orig-zoom-in-btn" class="px-3 py-1 bg-gray-200 rounded-md hover:bg-gray-300">+</button>
-                     <button id="orig-zoom-reset-btn" class="px-3 py-1 bg-gray-200 rounded-md hover:bg-gray-300">Reset</button>
+                     <button id="zoom-out-btn" class="px-3 py-1 bg-gray-200 rounded-md hover:bg-gray-300">-</button>
+                     <span id="zoom-level" class="text-sm font-medium w-16 text-center">100%</span>
+                     <button id="zoom-in-btn" class="px-3 py-1 bg-gray-200 rounded-md hover:bg-gray-300">+</button>
+                     <button id="zoom-reset-btn" class="px-3 py-1 bg-gray-200 rounded-md hover:bg-gray-300">Reset</button>
                  </div>
             </div>
 
@@ -99,13 +99,6 @@
                     <h3 class="text-lg font-semibold mb-2 text-center">Live Preview</h3>
                     <div id="result-preview-container" class="preview-container preview-container-bg rounded-lg border border-gray-300 p-2 relative h-[350px] sm:h-[400px]">
                         <img id="result-preview" src="#" alt="Result Image Preview" class="preview-image rounded-md">
-                    </div>
-                     <!-- Zoom Controls -->
-                    <div class="flex items-center justify-center gap-2 mt-3">
-                        <button id="res-zoom-out-btn" class="px-3 py-1 bg-gray-200 rounded-md hover:bg-gray-300">-</button>
-                        <span id="res-zoom-level" class="text-sm font-medium w-16 text-center">100%</span>
-                        <button id="res-zoom-in-btn" class="px-3 py-1 bg-gray-200 rounded-md hover:bg-gray-300">+</button>
-                        <button id="res-zoom-reset-btn" class="px-3 py-1 bg-gray-200 rounded-md hover:bg-gray-300">Reset</button>
                     </div>
                 </div>
                  <!-- Download Options -->
@@ -152,18 +145,12 @@
         const ctx = canvas.getContext('2d', { willReadFrequently: true });
         const downloadBtn = document.getElementById('download-btn');
         const colorSelectionsContainer = document.getElementById('color-selections-container');
-        
-        // Original Image Zoom Elements
-        const origZoomInBtn = document.getElementById('orig-zoom-in-btn');
-        const origZoomOutBtn = document.getElementById('orig-zoom-out-btn');
-        const origZoomResetBtn = document.getElementById('orig-zoom-reset-btn');
-        const origZoomLevelDisplay = document.getElementById('orig-zoom-level');
-        
-        // Result Image Zoom Elements
-        const resZoomInBtn = document.getElementById('res-zoom-in-btn');
-        const resZoomOutBtn = document.getElementById('res-zoom-out-btn');
-        const resZoomResetBtn = document.getElementById('res-zoom-reset-btn');
-        const resZoomLevelDisplay = document.getElementById('res-zoom-level');
+
+        // Zoom Elements
+        const zoomInBtn = document.getElementById('zoom-in-btn');
+        const zoomOutBtn = document.getElementById('zoom-out-btn');
+        const zoomResetBtn = document.getElementById('zoom-reset-btn');
+        const zoomLevelDisplay = document.getElementById('zoom-level');
 
         // Download Options Elements
         const formatSelector = document.getElementById('format-selector');
@@ -180,17 +167,14 @@
         let outputFormat = 'png';
         let outputQuality = 92;
 
-        // --- Pan/Zoom State Factory ---
-        const createPanZoomState = () => ({
+        // --- Pan/Zoom State ---
+        let panZoomState = {
             zoomLevel: 1,
             isPanning: false,
             panOccurred: false,
             startPan: { x: 0, y: 0 },
             imageOffset: { x: 0, y: 0 }
-        });
-
-        let origState = createPanZoomState();
-        let resState = createPanZoomState();
+        };
 
         // --- Event Listeners ---
 
@@ -205,17 +189,14 @@
                         workspace.classList.remove('hidden');
                         originalPreview.src = event.target.result;
                         resultPreview.src = "https://placehold.co/600x400/f1f5f9/cbd5e1?text=Preview";
-                        
+
                         canvas.width = currentImage.naturalWidth;
                         canvas.height = currentImage.naturalHeight;
                         ctx.drawImage(currentImage, 0, 0);
                         originalImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
                         colorSelections = [];
-                        origState = createPanZoomState();
-                        resState = createPanZoomState();
-                        updateTransform(originalPreview, origState, origZoomLevelDisplay);
-                        updateTransform(resultPreview, resState, resZoomLevelDisplay);
+                        resetZoom();
                         renderColorSelections();
                         updateResult();
                     };
@@ -226,7 +207,7 @@
         });
 
         originalPreviewContainer.addEventListener('click', (e) => {
-            if (origState.panOccurred) return;
+            if (panZoomState.panOccurred) return;
             if (!currentImage) return;
 
             const rect = originalPreview.getBoundingClientRect();
@@ -238,20 +219,20 @@
 
             const pixelIndex = (Math.floor(clickY) * currentImage.naturalWidth + Math.floor(clickX)) * 4;
             const pixel = originalImageData.data.slice(pixelIndex, pixelIndex + 4);
-            
+
             colorSelections.push({
                 id: Date.now(),
                 color: { r: pixel[0], g: pixel[1], b: pixel[2] },
                 tolerance: 20,
                 blur: 0
             });
-            
+
             renderColorSelections();
             updateResult();
         });
-        
+
         // --- Pan/Zoom Setup ---
-        function setupPanZoom(container, element, state, zoomLevelDisplay) {
+        function setupPanZoom(container) {
             let initialPinchDistance = null;
             let initialZoomLevel = 1;
 
@@ -262,95 +243,93 @@
             container.addEventListener('mousedown', (e) => {
                 if (e.button !== 0) return;
                 if (container.id === 'original-preview-container' && !isPanMode) return;
-                state.isPanning = true;
-                state.panOccurred = false;
-                state.startPan.x = e.clientX - state.imageOffset.x;
-                state.startPan.y = e.clientY - state.imageOffset.y;
+                panZoomState.isPanning = true;
+                panZoomState.panOccurred = false;
+                panZoomState.startPan.x = e.clientX - panZoomState.imageOffset.x;
+                panZoomState.startPan.y = e.clientY - panZoomState.imageOffset.y;
                 container.style.cursor = 'grabbing';
             });
 
             container.addEventListener('touchstart', (e) => {
                 if (container.id === 'original-preview-container' && !isPanMode) return;
                 if (e.touches.length === 1) {
-                    state.isPanning = true;
-                    state.panOccurred = false;
-                    state.startPan.x = e.touches[0].clientX - state.imageOffset.x;
-                    state.startPan.y = e.touches[0].clientY - state.imageOffset.y;
+                    panZoomState.isPanning = true;
+                    panZoomState.panOccurred = false;
+                    panZoomState.startPan.x = e.touches[0].clientX - panZoomState.imageOffset.x;
+                    panZoomState.startPan.y = e.touches[0].clientY - panZoomState.imageOffset.y;
                 } else if (e.touches.length === 2) {
                     initialPinchDistance = getDistance(e.touches);
-                    initialZoomLevel = state.zoomLevel;
+                    initialZoomLevel = panZoomState.zoomLevel;
                 }
             });
-            
+
             document.addEventListener('mousemove', (e) => {
-                if (state.isPanning) {
-                    if (Math.abs(e.clientX - state.startPan.x - state.imageOffset.x) > 3 || Math.abs(e.clientY - state.startPan.y - state.imageOffset.y) > 3) {
-                        state.panOccurred = true;
+                if (panZoomState.isPanning) {
+                    if (Math.abs(e.clientX - panZoomState.startPan.x - panZoomState.imageOffset.x) > 3 || Math.abs(e.clientY - panZoomState.startPan.y - panZoomState.imageOffset.y) > 3) {
+                        panZoomState.panOccurred = true;
                     }
-                    state.imageOffset.x = e.clientX - state.startPan.x;
-                    state.imageOffset.y = e.clientY - state.startPan.y;
-                    updateTransform(element, state, zoomLevelDisplay);
+                    panZoomState.imageOffset.x = e.clientX - panZoomState.startPan.x;
+                    panZoomState.imageOffset.y = e.clientY - panZoomState.startPan.y;
+                    updateTransform();
                 }
             });
 
             document.addEventListener('mouseup', () => {
-                if(state.isPanning) {
-                    state.isPanning = false;
+                if(panZoomState.isPanning) {
+                    panZoomState.isPanning = false;
                     container.style.cursor = container.id === 'original-preview-container' ? 'crosshair' : 'grab';
                 }
             });
 
             container.addEventListener('touchmove', (e) => {
                 e.preventDefault();
-                if (e.touches.length === 1 && state.isPanning) {
-                    state.imageOffset.x = e.touches[0].clientX - state.startPan.x;
-                    state.imageOffset.y = e.touches[0].clientY - state.startPan.y;
-                    updateTransform(element, state, zoomLevelDisplay);
+                if (e.touches.length === 1 && panZoomState.isPanning) {
+                    panZoomState.imageOffset.x = e.touches[0].clientX - panZoomState.startPan.x;
+                    panZoomState.imageOffset.y = e.touches[0].clientY - panZoomState.startPan.y;
+                    updateTransform();
                 } else if (e.touches.length === 2 && initialPinchDistance) {
                     const newDistance = getDistance(e.touches);
                     const zoomFactor = newDistance / initialPinchDistance;
-                    setZoom(element, state, zoomLevelDisplay, initialZoomLevel * zoomFactor);
+                    setZoom(initialZoomLevel * zoomFactor);
                 }
             });
 
             container.addEventListener('touchend', (e) => {
-                state.isPanning = false;
+                panZoomState.isPanning = false;
                 initialPinchDistance = null;
             });
         }
-        
-        setupPanZoom(originalPreviewContainer, originalPreview, origState, origZoomLevelDisplay);
-        setupPanZoom(resultPreviewContainer, resultPreview, resState, resZoomLevelDisplay);
-        
-        origZoomInBtn.addEventListener('click', () => setZoom(originalPreview, origState, origZoomLevelDisplay, origState.zoomLevel + 0.2));
-        origZoomOutBtn.addEventListener('click', () => setZoom(originalPreview, origState, origZoomLevelDisplay, origState.zoomLevel - 0.2));
-        origZoomResetBtn.addEventListener('click', () => resetZoom(originalPreview, origState, origZoomLevelDisplay));
-        
-        resZoomInBtn.addEventListener('click', () => setZoom(resultPreview, resState, resZoomLevelDisplay, resState.zoomLevel + 0.2));
-        resZoomOutBtn.addEventListener('click', () => setZoom(resultPreview, resState, resZoomLevelDisplay, resState.zoomLevel - 0.2));
-        resZoomResetBtn.addEventListener('click', () => resetZoom(resultPreview, resState, resZoomLevelDisplay));
 
-        function setZoom(element, state, display, level) {
-            state.zoomLevel = Math.max(0.2, Math.min(level, 10));
-            updateTransform(element, state, display);
+        setupPanZoom(originalPreviewContainer);
+        setupPanZoom(resultPreviewContainer);
+
+        zoomInBtn.addEventListener('click', () => setZoom(panZoomState.zoomLevel + 0.2));
+        zoomOutBtn.addEventListener('click', () => setZoom(panZoomState.zoomLevel - 0.2));
+        zoomResetBtn.addEventListener('click', () => resetZoom());
+
+        function setZoom(level) {
+            panZoomState.zoomLevel = Math.max(0.2, Math.min(level, 10));
+            updateTransform();
         }
 
-        function resetZoom(element, state, display) {
-            state.zoomLevel = 1;
-            state.imageOffset = { x: 0, y: 0 };
-            updateTransform(element, state, display);
+        function resetZoom() {
+            panZoomState.zoomLevel = 1;
+            panZoomState.imageOffset = { x: 0, y: 0 };
+            updateTransform();
         }
 
-        function updateTransform(element, state, display) {
-            element.style.transform = `translate(${state.imageOffset.x}px, ${state.imageOffset.y}px) scale(${state.zoomLevel})`;
-            display.textContent = `${Math.round(state.zoomLevel * 100)}%`;
+        function updateTransform() {
+            const transform = `translate(${panZoomState.imageOffset.x}px, ${panZoomState.imageOffset.y}px) scale(${panZoomState.zoomLevel})`;
+            originalPreview.style.transform = transform;
+            resultPreview.style.transform = transform;
+            zoomLevelDisplay.textContent = `${Math.round(panZoomState.zoomLevel * 100)}%`;
         }
-        
+
         // --- Download Options Listeners ---
         formatSelector.addEventListener('click', (e) => {
             if (e.target.classList.contains('format-btn')) {
                 outputFormat = e.target.dataset.format;
-                
+
                 document.querySelectorAll('.format-btn').forEach(btn => {
                     btn.classList.remove('bg-blue-600', 'text-white');
                     btn.classList.add('bg-gray-200', 'text-gray-700');
@@ -380,7 +359,7 @@
 
             colorSelections.forEach(selection => {
                 const hexColor = `#${selection.color.r.toString(16).padStart(2, '0')}${selection.color.g.toString(16).padStart(2, '0')}${selection.color.b.toString(16).padStart(2, '0')}`;
-                
+
                 const element = document.createElement('div');
                 element.className = 'bg-gray-50 p-3 rounded-lg border space-y-2';
                 element.innerHTML = `
@@ -459,7 +438,7 @@
 
             const alphaMask = generateAlphaMask();
             const maxBlur = colorSelections.reduce((max, s) => Math.max(max, s.blur), 0);
-            
+
             const finalCanvas = document.createElement('canvas');
             finalCanvas.width = canvas.width;
             finalCanvas.height = canvas.height;
@@ -470,7 +449,7 @@
             maskCanvas.height = canvas.height;
             const maskCtx = maskCanvas.getContext('2d');
             maskCtx.putImageData(alphaMask, 0, 0);
-            
+
             if (maxBlur > 0) {
                 finalCtx.filter = `blur(${maxBlur}px)`;
             }
@@ -479,7 +458,7 @@
 
             finalCtx.globalCompositeOperation = 'source-in';
             finalCtx.drawImage(currentImage, 0, 0);
-            
+
             if (outputFormat === 'jpeg') {
                 finalCtx.globalCompositeOperation = 'destination-over';
                 finalCtx.fillStyle = '#FFFFFF';
@@ -489,7 +468,7 @@
             const mimeType = `image/${outputFormat}`;
             const quality = outputQuality / 100;
             const resultDataUrl = finalCanvas.toDataURL(mimeType, quality);
-            
+
             resultPreview.src = resultDataUrl;
             downloadBtn.href = resultDataUrl;
 
@@ -514,7 +493,7 @@
         originalPreviewContainer.addEventListener('click', (e) => {
             e.stopImmediatePropagation();
             if (isPanMode) return;
-            if (origState.panOccurred) return;
+            if (panZoomState.panOccurred) return;
             if (!currentImage) return;
 
             const rect = originalPreview.getBoundingClientRect();
